@@ -1,30 +1,108 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { format } from "date-fns";
+import { useEffect, useRef, useState } from "react";
 
-const stationOptions = ["PLTD KOTARAYA", "PLTD BUNUT", "PLTD ANOTHER"];
+// Tipe data untuk hasil transformasi
+interface TableRow {
+  jam: string;
+  beban: (number | string)[];
+}
 
-const generateBebanData = (station: string) => {
-  const data = [];
-  for (let i = 1; i <= 24; i++) {
-    const row = [];
-    for (let j = 0; j < 12; j++) {
-      row.push(Math.floor(Math.random() * 100));
-    }
-    data.push({ jam: `${i.toString().padStart(2, "0")}:00`, beban: row });
-  }
-  return { [station]: data };
-};
+interface LoadReading {
+  timestamp: string;
+  load: number;
+  machine: {
+    identifier: string;
+  };
+}
 
 const TableBeban = () => {
+  const [stationOptions] = useState<string[]>([
+    "PLN_MOUTONG",
+    "THAS_POWER_MOUTONG",
+    "GSS_BOLANO",
+    "THAS_POWER_PALASA",
+    "PLTM_TOMINI",
+    "PLTD_KOTARAYA",
+  ]);
   const [selectedStation, setSelectedStation] = useState<string | null>(null);
-  const [bebanData, setBebanData] = useState<
-    Record<string, { jam: string; beban: number[] }[]>
-  >({});
+  const [tableRows, setTableRows] = useState<TableRow[]>([]);
+  const [machineHeaders, setMachineHeaders] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Tutup dropdown kalau klik di luar
+  useEffect(() => {
+    if (!selectedStation) {
+      setTableRows([]);
+      setMachineHeaders([]);
+      return;
+    }
+
+    const fetchBebanData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `https://general-serve.vercel.app/load-readings/plant-type/${selectedStation}`
+        );
+        if (!res.ok)
+          throw new Error(`Gagal mengambil data untuk ${selectedStation}`);
+
+        const data = await res.json();
+        const loadReadings = data.loadReadings as LoadReading[];
+
+        if (!Array.isArray(loadReadings) || loadReadings.length === 0) {
+          setTableRows([]);
+          setMachineHeaders([]);
+          return;
+        }
+
+        // Ambil list mesin unik
+        const machineSet = new Set<string>();
+        loadReadings.forEach((r) => machineSet.add(r.machine.identifier));
+        const uniqueMachines = Array.from(machineSet).sort((a, b) => {
+          const numA = parseInt(a.match(/\d+/)?.[0] || "0");
+          const numB = parseInt(b.match(/\d+/)?.[0] || "0");
+          return numA - numB;
+        });
+        setMachineHeaders(uniqueMachines);
+
+        // Kelompokkan berdasarkan jam
+        const dataByHour: Record<string, Record<string, number>> = {};
+        for (const reading of loadReadings) {
+          const hour = format(new Date(reading.timestamp), "HH:00");
+          const machineId = reading.machine.identifier;
+          if (!dataByHour[hour]) dataByHour[hour] = {};
+          dataByHour[hour][machineId] = reading.load;
+        }
+
+        // Isi 24 jam
+        const finalTableData: TableRow[] = [];
+        for (let i = 1; i <= 24; i++) {
+          const hourKey = `${i.toString().padStart(2, "0")}:00`;
+          const hourlyData = dataByHour[hourKey] || {};
+          const bebanRow = uniqueMachines.map(
+            (machine) => hourlyData[machine] ?? "-"
+          );
+          finalTableData.push({ jam: hourKey, beban: bebanRow });
+        }
+
+        setTableRows(finalTableData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gagal memuat data");
+        setTableRows([]);
+        setMachineHeaders([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBebanData();
+  }, [selectedStation]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -38,35 +116,30 @@ const TableBeban = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Update data saat stasiun dipilih
-  useEffect(() => {
-    if (selectedStation) {
-      setBebanData(generateBebanData(selectedStation));
-    }
-  }, [selectedStation]);
-
   const handleSelect = (station: string) => {
     setSelectedStation(station);
-    setDropdownOpen(false); // otomatis nutup
+    setDropdownOpen(false);
   };
 
   return (
-    <div className="p-4">
-      {/* Dropdown */}
-      <div className="relative w-full max-w-md mb-4" ref={dropdownRef}>
+    <div className="p-4 bg-gray-50 min-h-screen">
+      {/* Dropdown Selector */}
+      <div className="w-full max-w-sm mb-6 relative z-20" ref={dropdownRef}>
         <button
           onClick={() => setDropdownOpen((prev) => !prev)}
-          className="w-full bg-sky-400 text-white px-4 py-2 rounded text-left"
+          className="w-full bg-sky-600 text-white px-4 py-2 rounded-xl shadow text-left hover:bg-sky-700 transition"
         >
-          {selectedStation ? `Stasiun: ${selectedStation}` : "Pilih Stasiun"}
+          {selectedStation
+            ? `Stasiun: ${selectedStation}`
+            : "Pilih Tipe Stasiun"}
         </button>
         {dropdownOpen && (
-          <div className="absolute w-full bg-white border shadow mt-1 rounded z-10">
+          <div className="absolute w-full bg-white border mt-1 shadow-md rounded-xl overflow-y-auto max-h-64 z-30">
             {stationOptions.map((station) => (
               <button
                 key={station}
                 onClick={() => handleSelect(station)}
-                className="w-full text-left px-4 py-2 hover:bg-sky-100"
+                className="w-full px-4 py-2 text-left hover:bg-sky-100 transition"
               >
                 {station}
               </button>
@@ -76,39 +149,60 @@ const TableBeban = () => {
       </div>
 
       {/* Tabel */}
-      {selectedStation && (
-        <div>
-          <h2 className="text-lg font-semibold mb-2">{selectedStation}</h2>
-          <table className="w-full border border-gray-300 text-sm text-center mb-2">
-            <thead>
-              <tr className="bg-sky-200">
-                <th className="py-2">Jam</th>
-                {[...Array(12)].map((_, i) => (
-                  <th key={i} className="py-2">
-                    Mesin {i + 1}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(bebanData[selectedStation] || []).map((row, rowIndex) => (
-                <tr key={rowIndex} className="border-t">
-                  <td className="py-1">{row.jam}</td>
-                  {row.beban.map((val, colIndex) => (
-                    <td key={colIndex} className="py-1">
-                      {val}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {loading ? (
+        <p>Loading data...</p>
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
+      ) : selectedStation ? (
+        <>
+          <h2 className="text-lg font-semibold mb-3 text-slate-800">
+            Data Beban per Jam - {selectedStation}
+          </h2>
 
-      {!selectedStation && (
-        <p className="text-gray-500 text-sm">
-          Silakan pilih 1 stasiun untuk melihat data.
+          {tableRows.length === 0 ? (
+            <p className="text-gray-500 italic">Data tidak tersedia.</p>
+          ) : (
+            <div className="w-full overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+              <table className="min-w-[1000px] border-collapse text-sm text-center">
+                <thead className="bg-sky-200 text-gray-800">
+                  <tr>
+                    <th className="py-2 px-4 border sticky left-0 bg-sky-200 z-10 text-left">
+                      Jam
+                    </th>
+                    {machineHeaders.map((header) => (
+                      <th
+                        key={header}
+                        className="py-2 px-4 border whitespace-nowrap"
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((row) => (
+                    <tr key={row.jam} className="hover:bg-gray-50">
+                      <td className="py-1 px-4 border sticky left-0 bg-white z-10 text-left font-medium">
+                        {row.jam}
+                      </td>
+                      {row.beban.map((val, idx) => (
+                        <td
+                          key={idx}
+                          className="py-1 px-4 border whitespace-nowrap"
+                        >
+                          {val}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-gray-600 text-sm">
+          Silakan pilih tipe stasiun terlebih dahulu.
         </p>
       )}
     </div>

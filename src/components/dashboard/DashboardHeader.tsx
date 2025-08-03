@@ -25,7 +25,7 @@ export default function DashboardHeader({
       >
         {title}
       </h1>
-      <select
+      {/* <select
         className="text-sm border rounded px-2 py-1 shadow-sm"
         value={selectedStation}
         onChange={(e) => onStationChange?.(e.target.value)}
@@ -36,7 +36,7 @@ export default function DashboardHeader({
             {station}
           </option>
         ))}
-      </select>
+      </select> */}
     </div>
   );
 }

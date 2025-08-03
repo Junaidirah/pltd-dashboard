@@ -1,79 +1,147 @@
 "use client";
 
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/components/ui/select";
+import { format } from "date-fns";
+import { useEffect, useState } from "react";
+import {
   Bar,
   BarChart,
   CartesianGrid,
   Legend,
-  Rectangle,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-interface LoadData {
+// Definisikan tipe data
+interface LoadReading {
   timestamp: string;
   load: number;
-  station: string;
+  dmSiang: number;
+  dmMalam: number;
 }
+interface ChartData extends LoadReading {}
+type ChartProps = { className?: string };
 
-const dummyData: LoadData[] = [
-  { timestamp: "08:00", load: 120, station: "Stasiun A" },
-  { timestamp: "09:00", load: 150, station: "Stasiun A" },
-  { timestamp: "08:00", load: 100, station: "Stasiun B" },
-  { timestamp: "09:00", load: 180, station: "Stasiun B" },
-  { timestamp: "08:00", load: 130, station: "Stasiun C" },
-  { timestamp: "09:00", load: 160, station: "Stasiun C" },
-];
+const Chart = ({ className }: ChartProps) => {
+  // Langsung inisialisasi state dengan daftar yang sudah ada
+  const [plantTypes, setPlantTypes] = useState<string[]>([
+    "PLN_MOUTONG",
+    "THAS_POWER_MOUTONG",
+    "GSS_BOLANO",
+    "THAS_POWER_PALASA",
+    "PLTM_TOMINI",
+    "PLTD_KOTARAYA",
+  ]);
 
-const Page = () => {
-  const selectedStation = "all";
+  const [selectedPlantType, setSelectedPlantType] = useState<string>("");
+  const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredData =
-    selectedStation === "all"
-      ? dummyData
-      : dummyData.filter((d) => d.station === selectedStation);
+  // useEffect untuk mengambil data plant types sudah dihapus
 
-  const chartData = filteredData.map((d) => ({
-    ...d,
-    pv: d.load, // beban siang
-    uv: Math.round(d.load * 0.8), // beban malam
-  }));
+  // useEffect untuk mengambil data chart tetap ada
+  useEffect(() => {
+    if (!selectedPlantType) {
+      setChartData([]);
+      return;
+    }
+
+    const fetchChartData = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const apiUrl = "https://general-serve.vercel.app"; // Mengarah ke server lokal
+        const res = await fetch(
+          `${apiUrl}/load-readings/plant-type/${selectedPlantType}`
+        );
+
+        if (!res.ok) {
+          throw new Error(`Gagal mengambil data untuk ${selectedPlantType}`);
+        }
+        const data = await res.json();
+        const formattedData = data.loadReadings.map((reading: LoadReading) => ({
+          ...reading,
+          timestamp: format(new Date(reading.timestamp), "HH:mm"),
+        }));
+        setChartData(formattedData);
+      } catch (error) {
+        console.error("Fetch chart data failed:", error);
+        if (error instanceof Error) {
+          setError(error.message);
+        } else {
+          setError("Terjadi kesalahan yang tidak diketahui.");
+        }
+        setChartData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChartData();
+  }, [selectedPlantType]);
 
   return (
-    <main className="p-4 md:p-6 lg:p-10">
+    <div className={className}>
       <h1 className="text-lg md:text-xl lg:text-2xl font-bold mb-4">
-        Grafik Beban
+        Grafik Beban per Tipe Plant
       </h1>
+
+      <div className="mb-6 max-w-xs">
+        <Select onValueChange={(value) => setSelectedPlantType(value)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Pilih Tipe Plant" />
+          </SelectTrigger>
+          <SelectContent>
+            {plantTypes.map((type) => (
+              <SelectItem key={type} value={type}>
+                {type}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="bg-blue-50 rounded-xl p-3 md:p-4 lg:p-6 shadow-md">
         <div className="w-full h-[300px] sm:h-[400px] md:h-[500px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="timestamp" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar
-                dataKey="pv"
-                fill="#8884d8"
-                name="Beban Siang"
-                activeBar={<Rectangle fill="pink" stroke="blue" />}
-              />
-              <Bar
-                dataKey="uv"
-                fill="#82ca9d"
-                name="Beban Malam"
-                activeBar={<Rectangle fill="gold" stroke="purple" />}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+          {loading ? (
+            <div className="flex items-center justify-center h-full">
+              Loading...
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-full text-red-500">
+              {error}
+            </div>
+          ) : chartData.length === 0 && selectedPlantType ? (
+            <div className="flex items-center justify-center h-full">
+              Tidak ada data untuk ditampilkan.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="timestamp" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="load" fill="#8884d8" name="Beban (Load)" />
+                <Bar dataKey="dmSiang" fill="#82ca9d" name="DM Siang" />
+                <Bar dataKey="dmMalam" fill="#ffc658" name="DM Malam" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
-    </main>
+    </div>
   );
 };
 
-export default Page;
+export default Chart;
