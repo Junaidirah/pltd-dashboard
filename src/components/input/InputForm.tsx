@@ -53,7 +53,6 @@ export default function InputForm({}: InputFormProps) {
     }));
   };
 
-  // --- FUNGSI handleSubmit TELAH DIPERBAIKI ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMachineId || !timestamp) {
@@ -79,7 +78,6 @@ export default function InputForm({}: InputFormProps) {
         }
       );
 
-      // Cek jika server merespons dengan error
       if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Server Error ${res.status}: ${errorText}`);
@@ -92,9 +90,8 @@ export default function InputForm({}: InputFormProps) {
       console.error("Submit failed:", error);
       let errorMessage = "Terjadi kesalahan yang tidak diketahui.";
 
-      // Cek apakah 'error' adalah objek Error
       if (error instanceof Error) {
-        errorMessage = error.message; // Aman untuk diakses di dalam blok ini
+        errorMessage = error.message;
       }
 
       alert(`Gagal submit data: ${errorMessage}`);
@@ -102,6 +99,8 @@ export default function InputForm({}: InputFormProps) {
   };
 
   const selectedPlant = plants.find((p) => p.id === selectedPlantId);
+
+  // Fungsi filterWaktu telah dihapus karena tidak lagi dibutuhkan.
 
   return (
     <form
@@ -148,7 +147,7 @@ export default function InputForm({}: InputFormProps) {
             onChange={(date) => setTimestamp(date)}
             showTimeSelect
             timeFormat="HH:mm"
-            timeIntervals={15}
+            timeIntervals={15} // Kembali menggunakan timeIntervals
             dateFormat="yyyy-MM-dd HH:mm"
             className="w-full border border-gray-200 rounded-lg px-4 py-2"
           />
